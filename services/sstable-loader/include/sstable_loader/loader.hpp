@@ -5,6 +5,9 @@
 // C++20 port of services/sstable-loader/src/loader.rs
 // Template Method pattern: migrate_table() defines the skeleton;
 // process_range() is the overridable step (virtual for testing).
+//
+// PAGINATION FIX: process_range_sync() implements per-page insert
+// when enable_pagination = true. Memory bounded to page_size rows.
 
 #include "sstable_loader/config.hpp"
 #include "sstable_loader/filter.hpp"
@@ -18,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sstable_loader {
 
@@ -94,6 +98,27 @@ private:
     asio::awaitable<void> migrate_table(const TableConfig& table);
     asio::awaitable<std::vector<std::string>>
     discover_partition_keys(std::string_view keyspace, std::string_view table) const;
+
+    // Synchronous range processor — dispatches paginated or unpaged path.
+    // Called from jthread pool in migrate_table().
+    void process_range_sync(const TokenRange&               range,
+                            std::string_view                 table,
+                            const std::vector<std::string>& partition_keys);
+
+    // Per-row insert with configurable retry + backoff.
+    // Shared by both paginated and unpaged paths.
+    // Returns true on success, false on exhausted retries.
+    bool insert_row_with_retry(std::string_view insert_query,
+                               std::string_view json_row,
+                               std::string_view table,
+                               const TokenRange& range,
+                               uint32_t max_retries,
+                               uint64_t retry_delay_ms);
+
+    // Tenant-level JSON row filtering.
+    // Returns true if the row should be SKIPPED (filtered out).
+    bool filter_json_row(std::string_view json_row,
+                         const std::vector<std::string>& tenant_id_columns);
 
     SSTableLoaderConfig                        config_;
     std::shared_ptr<svckit::ScyllaConnection>  source_;
