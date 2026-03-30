@@ -184,6 +184,7 @@ add_subdirectory(svckit)
 add_subdirectory(services/dual-writer)
 add_subdirectory(services/sstable-loader)
 add_subdirectory(services/dual-reader)
+add_subdirectory(services/tui-dash)
 add_subdirectory(tests)
 
 # ==============================================================================

@@ -211,6 +211,36 @@ clean:
 	@docker buildx prune -f 2>/dev/null || true
 	@echo "Clean complete"
 
+
+# =============================================================================
+# TUI Dashboard
+# =============================================================================
+
+.PHONY: tui-demo tui-dash tui-live
+
+tui-demo: build
+	@echo "Starting TUI Dashboard (Demo Mode)..."
+	./$(BUILD_DIR)/services/tui-dash/tui-dash --demo
+
+tui-dash: build
+	@echo "Starting TUI Dashboard (Live Mode)..."
+	./$(BUILD_DIR)/services/tui-dash/tui-dash --api-url http://localhost:9092
+
+## make tui-live API_URL=http://sstable-loader.prod:9092
+tui-live: build
+	@echo "Starting TUI Dashboard (Live Mode)..."
+	./$(BUILD_DIR)/services/tui-dash/tui-dash --api-url $(API_URL)
+```
+
+And add to the `help` target:
+```
+	@echo "TUI Dashboard:"
+	@echo "  tui-demo         - Run TUI dashboard in demo mode (no DB required)"
+	@echo "  tui-dash         - Run TUI dashboard (connects to sstable-loader API)"
+	@echo "  tui-live         - Run TUI dashboard with custom API_URL"
+
+
+
 # =============================================================================
 # CI/CD
 # =============================================================================
