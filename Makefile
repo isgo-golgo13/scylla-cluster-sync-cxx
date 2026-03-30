@@ -230,14 +230,35 @@ tui-dash: build
 tui-live: build
 	@echo "Starting TUI Dashboard (Live Mode)..."
 	./$(BUILD_DIR)/services/tui-dash/tui-dash --api-url $(API_URL)
-```
 
-And add to the `help` target:
-```
-	@echo "TUI Dashboard:"
-	@echo "  tui-demo         - Run TUI dashboard in demo mode (no DB required)"
-	@echo "  tui-dash         - Run TUI dashboard (connects to sstable-loader API)"
-	@echo "  tui-live         - Run TUI dashboard with custom API_URL"
+
+
+# =============================================================================
+# Doctore Dashboard (Leptos WASM — polyglot frontend)
+# =============================================================================
+
+.PHONY: doctore-dev doctore-build doctore-docker
+
+doctore-dev:
+	@echo "Starting Doctore Dashboard (Dev Mode + Hot Reload)..."
+	cd services/doctore-dash && trunk serve
+
+doctore-dev-live:
+	@echo "Starting Doctore Dashboard (Dev Mode → C++ sstable-loader backend)..."
+	cd services/doctore-dash && trunk serve --proxy-backend=http://localhost:8081
+
+doctore-build:
+	@echo "Building Doctore Dashboard (WASM Release)..."
+	cd services/doctore-dash && trunk build --release
+
+doctore-docker: docker-setup
+	@echo "Building Doctore Dashboard Docker image..."
+	docker buildx build --platform $(PLATFORM) \
+		-f services/doctore-dash/Dockerfile \
+		-t $(DOCKER_REGISTRY)/doctore-dash:$(VERSION) \
+		-t $(DOCKER_REGISTRY)/doctore-dash:latest \
+		--load services/doctore-dash
+
 
 
 
@@ -285,3 +306,7 @@ help:
 	@echo "  VERSION          - $(VERSION)"
 	@echo "  BUILD_TYPE       - $(BUILD_TYPE)"
 	@echo ""
+	@echo "TUI Dashboard:"
+	@echo "  tui-demo         - Run TUI dashboard in demo mode (no DB required)"
+	@echo "  tui-dash         - Run TUI dashboard (connects to sstable-loader API)"
+	@echo "  tui-live         - Run TUI dashboard with custom API_URL"

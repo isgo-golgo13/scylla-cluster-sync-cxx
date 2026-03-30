@@ -115,6 +115,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+# Doctore Dashboard (Leptos WASM — browser-based migration UI)
+  doctore-dash:
+    build:
+      context: services/doctore-dash
+      dockerfile: Dockerfile
+    container_name: doctore-dash
+    ports:
+      - "3000:3000"
+    networks:
+      - scylla-net
+    depends_on:
+      - sstable-loader
+    restart: unless-stopped
   # Prometheus
   prometheus:
     image: prom/prometheus:v2.47.0
