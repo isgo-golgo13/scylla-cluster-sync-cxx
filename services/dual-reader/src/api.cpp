@@ -1,1 +1,1 @@
-// services/dual-reader/src/api.cpp
+// STUB — full implementation delivered in Zip 2/3

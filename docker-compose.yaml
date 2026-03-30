@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # Source ScyllaDB cluster (simulates GCP/Cassandra)
+  scylla-source:
+    image: scylladb/scylla:6.1
+    container_name: scylla-source
+    command: --smp 2 --memory 2G --overprovisioned 1 --developer-mode 1
+    ports:
+      - "9042:9042"
+    networks:
+      - scylla-net
+    volumes:
+      - scylla-source-data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # Target ScyllaDB cluster (simulates AWS)
+  scylla-target:
+    image: scylladb/scylla:6.1
+    container_name: scylla-target
+    command: --smp 2 --memory 2G --overprovisioned 1 --developer-mode 1
+    ports:
+      - "9043:9042"
+    networks:
+      - scylla-net
+    volumes:
+      - scylla-target-data:/var/lib/scylla
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # Dual-Writer CQL Proxy service
+  dual-writer:
+    build:
+      context: .
+      dockerfile: services/dual-writer/Dockerfile.dual-writer
+    container_name: dual-writer
+    ports:
+      - "9042:9042"  # CQL protocol port
+      - "9090:9090"  # Prometheus metrics
+    environment:
+      - SPDLOG_LEVEL=info
+      - DUAL_WRITER_SOURCE_USERNAME=cassandra
+      - DUAL_WRITER_SOURCE_PASSWORD=cassandra
+      - DUAL_WRITER_TARGET_USERNAME=cassandra
+      - DUAL_WRITER_TARGET_PASSWORD=cassandra
+    volumes:
+      - ./config:/config:ro
+    networks:
+      - scylla-net
+    depends_on:
+      scylla-source:
+        condition: service_healthy
+      scylla-target:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "netstat -an | grep -q ':9042.*LISTEN'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # SSTable-Loader service
+  sstable-loader:
+    build:
+      context: .
+      dockerfile: services/sstable-loader/Dockerfile.sstable-loader
+    container_name: sstable-loader
+    ports:
+      - "8081:8081"  # HTTP API
+      - "9092:9092"  # Prometheus metrics
+    environment:
+      - SPDLOG_LEVEL=info
+    volumes:
+      - ./config:/config:ro
+      - sstable-loader-checkpoints:/checkpoints
+      - sstable-snapshots:/snapshots:ro
+    networks:
+      - scylla-net
+    depends_on:
+      scylla-source:
+        condition: service_healthy
+      scylla-target:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Dual-Reader service
+  dual-reader:
+    build:
+      context: .
+      dockerfile: services/dual-reader/Dockerfile.dual-reader
+    container_name: dual-reader
+    ports:
+      - "8082:8082"  # HTTP API
+      - "9091:9091"  # Prometheus metrics
+    environment:
+      - SPDLOG_LEVEL=info
+    volumes:
+      - ./config:/config:ro
+    networks:
+      - scylla-net
+    depends_on:
+      scylla-source:
+        condition: service_healthy
+      scylla-target:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    ports:
+      - "9093:9090"
+    volumes:
+      - ./monitoring/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - scylla-net
+    restart: unless-stopped
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - scylla-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  scylla-net:
+    driver: bridge
+
+volumes:
+  scylla-source-data:
+  scylla-target-data:
+  sstable-loader-checkpoints:
+  sstable-snapshots:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,84 @@
+# Dual-Reader Configuration
+# Data Consistency Validation Service
+# config/dual-reader.yaml (FIXED)
+
+source:
+  driver: "scylla"
+  hosts:
+    - "scylla-source-1.gcp.example.com"
+    - "scylla-source-2.gcp.example.com"
+    - "scylla-source-3.gcp.example.com"
+  port: 9042
+  keyspace: "production_keyspace"
+  username: null
+  password: null
+  connection_timeout_ms: 5000    # FIXED: was connection_timeout: 5s
+  request_timeout_ms: 10000      # FIXED: was request_timeout: 10s
+  pool_size: 4
+
+target:
+  driver: "scylla"
+  hosts:
+    - "scylla-target-1.aws.example.com"
+    - "scylla-target-2.aws.example.com"
+    - "scylla-target-3.aws.example.com"
+  port: 9042
+  keyspace: "production_keyspace"
+  username: null
+  password: null
+  connection_timeout_ms: 5000
+  request_timeout_ms: 10000
+  pool_size: 4
+
+reader:
+  # Tables to validate
+  tables:
+    - "users"
+    - "orders"
+    - "products"
+  
+  # Validation configuration
+  validation_interval_secs: 300  # Run validation every 5 minutes
+  sample_rate: 0.01  # Validate 1% of data per run
+  
+  # Parallelism
+  max_concurrent_reads: 10
+  batch_size: 1000
+  
+  # Discrepancy handling
+  max_discrepancies_to_report: 100
+  auto_reconcile: false  # If true, automatically fix discrepancies
+  reconciliation_mode: source_wins  # source_wins | newest_wins | manual
+
+# Iconik client filtering spec — selective dual reads
+# AND gate: table AND domain_id must both be in their whitelists for dual read
+# If either is absent → source only, no comparison
+filter:
+  enabled: false  # Set true to activate whitelist filtering
+
+  # Tables to compare (keyspace.table format)
+  # Tables NOT listed here → source only
+  compare_tables:
+    - "iconik.assets"
+    - "iconik.collections"
+    - "iconik.files"
+
+  # system_domain_ids to compare
+  # Domains NOT listed here → source only (they haven't been migrated yet)
+  compare_system_domain_ids: []
+  # Populate once domains are migrated to AWS target:
+  # compare_system_domain_ids:
+  #   - "domain-uuid-1"
+  #   - "domain-uuid-2"
+
+  # Column name for domain extraction
+  system_domain_id_column: "system_domain_id"
+
+  # JSONL discrepancy log
+  log_discrepancies: true
+  discrepancy_log_path: "discrepancies.jsonl"
+
+observability:
+  metrics_port: 9091
+  log_level: "info"
+  jaeger_endpoint: null

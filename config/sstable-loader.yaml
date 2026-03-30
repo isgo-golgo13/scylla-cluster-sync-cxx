@@ -1,0 +1,109 @@
+# SSTable-Loader Configuration
+# High-Performance Bulk Data Migration Service
+# config/sstable-loader.yaml (FIXED)
+
+source:
+  driver: "scylla"
+  hosts:
+    - "scylla-source-1.gcp.example.com"
+    - "scylla-source-2.gcp.example.com"
+    - "scylla-source-3.gcp.example.com"
+  port: 9042
+  keyspace: "production_keyspace"
+  username: null
+  password: null
+  connection_timeout_ms: 5000    # FIXED: was connection_timeout: 5s
+  request_timeout_ms: 30000      # FIXED: was request_timeout: 30s (longer for bulk ops)
+  pool_size: 8
+
+target:
+  driver: "scylla"
+  hosts:
+    - "scylla-target-1.aws.example.com"
+    - "scylla-target-2.aws.example.com"
+    - "scylla-target-3.aws.example.com"
+  port: 9042
+  keyspace: "production_keyspace"
+  username: null
+  password: null
+  connection_timeout_ms: 5000
+  request_timeout_ms: 30000
+  pool_size: 8
+  speculative_execution: true
+  speculative_delay_ms: 100
+
+loader:
+  # Tables to migrate
+  tables:
+    - name: "users"
+      partition_key: ["user_id"]
+    - name: "orders"
+      partition_key: ["order_id"]
+    - name: "products"
+      partition_key: ["product_id"]
+  
+  # Token range configuration
+  # Number of parallel token ranges = num_ranges_per_node * num_nodes * num_cores_per_node
+  num_ranges_per_core: 4
+  
+  # Parallelism
+  max_concurrent_loaders: 32  # Number of parallel loading tasks
+  batch_size: 5000  # Rows per batch
+  
+  # Progress tracking
+  checkpoint_interval_secs: 60  # Save progress every minute
+  checkpoint_file: "/tmp/sstable-loader-checkpoint.json"
+  
+  # Performance tuning
+  prefetch_rows: 10000
+  compression: true  # Use compression for data transfer
+  
+  # Rate limiting
+  max_throughput_mbps: 1000  # Maximum throughput in MB/s (0 = unlimited)
+  
+  # Error handling
+  max_retries: 3
+  retry_delay_secs: 5
+  skip_on_error: false  # If true, skip rows that fail to migrate
+  failed_rows_file: "failed_rows.jsonl"  # JSONL file for logging skipped rows (when skip_on_error=true)
+
+  # ---------------------------------------------------------------------------
+  # Phase 2 optimization parameters
+  # Only active when binary is built with: --features optimized-inserts
+  # Ignored entirely in default/production builds (no code path change)
+  # ---------------------------------------------------------------------------
+  #
+  # insert_batch_size: rows per UNLOGGED BATCH round-trip
+  #   - 1   = no batching, use concurrent prepared statements instead
+  #   - 100 = recommended starting point (50-200 range)
+  #   - Tune down if you see "batch too large" errors from ScyllaDB
+  insert_batch_size: 100
+  #
+  # insert_concurrency: max in-flight inserts within a token range
+  #   - Only active when insert_batch_size == 1 (concurrent single-row path)
+  #   - 32 = recommended starting point
+  insert_concurrency: 32
+
+  # ---------------------------------------------------------------------------
+  # Paginated source reads (runtime flag — default OFF = zero behavior change)
+  # ---------------------------------------------------------------------------
+  #
+  # enable_pagination: set true to page through large token ranges instead of
+  #   issuing one unpaged query. Prevents timeout crashes on large tables.
+  #   false (default) = original query_unpaged behavior, guaranteed zero regression.
+  enable_pagination: false
+  #
+  # page_size: rows per page when enable_pagination = true (default: 5000)
+  #   Tune down if individual pages still timeout; tune up for fewer round-trips.
+  page_size: 5000
+  #
+  # page_retry_attempts: retries per page fetch on timeout/error (default: 3)
+  page_retry_attempts: 3
+  #
+  # page_retry_backoff_ms: backoff between page retries in ms (default: 500)
+  page_retry_backoff_ms: 500
+
+observability:
+  metrics_port: 9092
+  log_level: "info"
+  jaeger_endpoint: null

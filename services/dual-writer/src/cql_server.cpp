@@ -1,1 +1,1 @@
-// services/dual-writer/src/cql_server.cpp
+// STUB — full implementation delivered in Zip 2/3

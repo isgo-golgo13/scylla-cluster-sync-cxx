@@ -46,9 +46,20 @@ struct ObservabilityConfig {
     ~ObservabilityConfig()                                     = default;
 };
 
-/// Load a YAML config file and deserialize into T.
-/// T must provide a static T::from_yaml(const YAML::Node&) factory.
-template<typename T>
-T load_config(std::string_view path);
+} // namespace svckit
+
+// Forward-declare yaml-cpp types to avoid header pollution
+namespace YAML { class Node; }
+
+namespace svckit {
+
+/// Load a YAML file and return the root node. Throws ConfigError on failure.
+[[nodiscard]] YAML::Node load_config_yaml(std::string_view path);
+
+/// Parse a DatabaseConfig from a YAML::Node subtree.
+[[nodiscard]] DatabaseConfig load_database_config(const YAML::Node& node);
+
+/// Parse an ObservabilityConfig from a YAML::Node subtree.
+[[nodiscard]] ObservabilityConfig load_observability_config(const YAML::Node& node);
 
 } // namespace svckit

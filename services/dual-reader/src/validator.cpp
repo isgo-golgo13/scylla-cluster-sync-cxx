@@ -1,1 +1,1 @@
-// services/dual-reader/src/validator.cpp
+// STUB — full implementation delivered in Zip 2/3
