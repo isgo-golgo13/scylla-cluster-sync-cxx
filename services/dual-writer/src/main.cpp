@@ -8,6 +8,7 @@
 //   - Boost.Asio io_context drives the CQL proxy (async TCP accept loop)
 //   - std::jthread for HTTP API server (cpp-httplib, blocking)
 //   - std::jthread for filter config hot-reload (60s interval)
+//   - std::jthread for retry loop (auto-started by DualWriter constructor)
 //   - co_spawn wires the CQL server coroutine into the Asio event loop
 //
 // Copyright (c) 2025 LuckyDrone.io — All rights reserved.
@@ -42,6 +43,7 @@ start_cql_server(boost::asio::io_context& ioc,
                  uint16_t source_port);
 
 void start_api_server(uint16_t port,
+                      std::shared_ptr<DualWriter> writer,
                       std::shared_ptr<svckit::ScyllaConnection> source,
                       std::shared_ptr<svckit::ScyllaConnection> target,
                       std::shared_ptr<BlacklistFilterGovernor>  filter,
@@ -110,7 +112,7 @@ int main(int argc, char* argv[]) {
         // --- Metrics registry ---
         auto metrics = std::make_shared<svckit::MetricsRegistry>("dual_writer");
 
-        // --- Build DualWriter ---
+        // --- Build DualWriter (retry thread auto-starts in constructor) ---
         auto writer = std::make_shared<dual_writer::DualWriter>(
             config, source_conn, target_conn, filter, metrics);
 
@@ -127,9 +129,9 @@ int main(int argc, char* argv[]) {
         const auto source_port = config.source.port;
 
         // --- Start HTTP API in background thread ---
-        std::jthread api_thread([&args, source_conn, target_conn, filter, metrics]() {
+        std::jthread api_thread([&args, writer, source_conn, target_conn, filter, metrics]() {
             dual_writer::start_api_server(
-                args.metrics_port, source_conn, target_conn, filter, metrics);
+                args.metrics_port, writer, source_conn, target_conn, filter, metrics);
         });
 
         // --- Start filter hot-reload in background thread ---
@@ -161,6 +163,7 @@ int main(int argc, char* argv[]) {
         spdlog::info("Starting CQL proxy on {}:{}", args.bind_addr, args.bind_port);
         spdlog::info("  Proxying reads to source: {}:{}", source_host, source_port);
         spdlog::info("  Intercepting writes for dual-write");
+        spdlog::info("  Background retry loop active");
 
         boost::asio::co_spawn(
             ioc,
